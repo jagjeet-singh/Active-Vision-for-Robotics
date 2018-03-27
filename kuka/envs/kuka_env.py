@@ -93,7 +93,8 @@ class KukaEnv(gym.Env):
 
 	def get_camera(self):
 		# Center of mass position and orientation (of link-7)
-		com_p, com_o, _, _, _, _ = p.getLinkState(self.botId, 6)
+		com_p, com_o, _, _, _, _ = p.getLinkState(
+			self.botId, 6, computeForwardKinematics=True)
 		rot_matrix = p.getMatrixFromQuaternion(com_o)
 		rot_matrix = np.array(rot_matrix).reshape(3, 3)
 		# Initial vectors
