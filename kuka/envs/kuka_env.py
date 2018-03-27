@@ -28,33 +28,23 @@ class KukaEnv(gym.Env):
 		self.observation_space = spaces.Box(low=0., high=1., shape=(4,))
 		
 		# Setting up pybullet 
-		self.physicsClient = p.connect(p.GUI)
+		p.connect(p.GUI)
 		p.setAdditionalSearchPath(pybullet_data.getDataPath())  # used by loadURDF
-		p.setGravity(0, 0, -10)
+
 		fov, aspect, nearplane, farplane = 60, 1.0, 0.01, 100
 		self.projection_matrix = p.computeProjectionMatrixFOV(
 			fov, aspect, nearplane, farplane)
+
 		self._seed()
 	
 	def _seed(self, seed=None):
 		self.np_random, seed = seeding.np_random(seed)
 		return [seed]
 
-	def _step(self, action):
-		self._assign_throttle(action)
-		p.stepSimulation()
-		self._observation = self._compute_observation()
-		reward = self._compute_reward()
-		done = self._compute_done()
-		self._envStepCounter +=1
-		return self._observation, reward, done, {}
+	def _init_simulation(self):
+		p.setGravity(0, 0, -10)
+		p.setTimeStep(0.01)
 
-	def _reset(self):
-		self.vt = np.zeros(self.numJoints)
-		self._envStepCounter = 0
-
-		p.resetSimulation()
-		p.setGravity(0,0,-10)
 		# Add plane
 		self.planeId = p.loadURDF("plane.urdf")
 
@@ -73,6 +63,22 @@ class KukaEnv(gym.Env):
 		start_orientation = p.getQuaternionFromEuler([0, 0, 0])
 		self.teddyId = p.loadURDF("teddy_vhacd.urdf", start_pos, start_orientation)
 
+	def _step(self, action):
+		self._assign_throttle(action)
+		p.stepSimulation(); self.get_camera()
+		self._observation = self._compute_observation()
+		reward = self._compute_reward()
+		done = self._compute_done()
+		self._envStepCounter += 1
+		return self._observation, reward, done, {}
+
+	def _reset(self):
+		self.vt = np.zeros(self.numJoints)
+		self._envStepCounter = 0
+
+		p.resetSimulation()
+		self._init_simulation()
+		
 		self._observation = self._compute_observation()
 		return self._observation
 
@@ -91,7 +97,6 @@ class KukaEnv(gym.Env):
 		rot_matrix = p.getMatrixFromQuaternion(com_o)
 		rot_matrix = np.array(rot_matrix).reshape(3, 3)
 		# Initial vectors
-		# pdb.set_trace()
 		init_camera_vector = (0, 0, 1) # z-axis
 		init_up_vector = (0, 1, 0) # y-axis
 		# Rotated vectors
