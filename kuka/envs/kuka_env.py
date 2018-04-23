@@ -24,7 +24,7 @@ class KukaEnv(gym.Env):
 		self.action_map = None
 
 		# Action and observation spaces
-		self.action_space = spaces.Discrete(27)
+		self.action_space = spaces.Discrete(6)
 		self.observation_space = spaces.Box(low=0., high=1., shape=(4,))
 
 		# State quantities that are updated after evey simulation step
@@ -45,9 +45,13 @@ class KukaEnv(gym.Env):
 		p.setAdditionalSearchPath(pybullet_data.getDataPath())  # used by loadURDF
 
 		# Create action map
-		list_actions = [np.array([i, j, k]) for i in [0., -delta, delta] \
-			for j in [0., -delta, delta] for k in [0., -delta, delta]]
-		self.action_map = dict(zip(range(27), list_actions))
+		list_actions = []
+		for i in range(3):
+			for j in [-delta, delta]:
+				action = np.zeros(3)
+				action[i] = j
+				list_actions.append(action)
+		self.action_map = dict(zip(range(6), list_actions))
 
 	def _seed(self, seed=None):
 		self.np_random, seed = seeding.np_random(seed)
@@ -159,7 +163,7 @@ class KukaEnv(gym.Env):
 		 	x_min, x_max, y_min, y_max = 0., 0., 0., 0.
 		return [x_min, y_min, x_max, y_max]
 
-	def _compute_reward(self, print_reward=False):
+	def _compute_reward(self, print_reward=True):
 		# Get the similarity between the current image is the target image
 		bbox = self._gt_bbox
 		reward = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
