@@ -1,14 +1,12 @@
 import os
 import math
 import numpy as np
-import pdb
 import gym
 from gym import spaces
 from gym.utils import seeding
 import pybullet as p
 import pybullet_data
 from PIL import Image
-import pickle
 
 CAMERA_IMG_SCALE = 1000
 
@@ -18,60 +16,39 @@ class KukaEnv(gym.Env):
 	'video.frames_per_second' : 100
 	}
 	def __init__(self):
-
-		# Action map to make action space discrete
-		delta = 0.3
-		self.action_map={
-		0:[0.0,0.0,0.0],
-		1:[0.0,0.0,delta],
-		2:[0.0,0.0,-delta],
-		3:[0.0,delta,0.0],
-		4:[0.0,delta,delta],
-		5:[0.0,delta,-delta],
-		6:[0.0,-delta,0.0],
-		7:[0.0,-delta,delta],
-		8:[0.0,-delta,-delta],
-		9:[delta,0.0,0.0],
-		10:[delta,0.0,delta],
-		11:[delta,0.0,-delta],
-		12:[delta,delta,0.0],
-		13:[delta,delta,delta],
-		14:[delta,delta,-delta],
-		15:[delta,-delta,0.0],
-		16:[delta,-delta,delta],
-		17:[delta,-delta,-delta],
-		18:[-delta,0.0,0.0],
-		19:[-delta,0.0,delta],
-		20:[-delta,0.0,-delta],
-		21:[-delta,delta,0.0],
-		22:[-delta,delta,delta],
-		23:[-delta,delta,-delta],
-		24:[-delta,-delta,0.0],
-		25:[-delta,-delta,delta],
-		26:[-delta,-delta,-delta]
-		}
-
 		# Setting up env variables
 		self.num_envs = 4
 		# self.numJoints = p.getNumJoints(self.botId, self.physicsClient)
 		self.numJoints= 7
-		self.endEffector = [0.0,0.0,0.0]
-		# 1 value for angular velocity of each joint
-		self.action_space = spaces.Discrete(27)
-		# get sample image from random initialization of joint angles
-		self.observation_space = spaces.Box(low=0., high=1., shape=(4,))
-		
-		# Setting up pybullet 
-		p.connect(p.DIRECT)
-		# p.connect(p.GUI)
-		p.setAdditionalSearchPath(pybullet_data.getDataPath())  # used by loadURDF
 
+		self.action_map = None
+
+		# Action and observation spaces
+		self.action_space = spaces.Discrete(27)
+		self.observation_space = spaces.Box(low=0., high=1., shape=(4,))
+
+		# State quantities that are updated after evey simulation step
+		self.end_effector_pos = None
+		self.rot_matrix = None
+		self.curr_camera_img = None
+
+		# self.projection_matrix will always be a fixed quantity
 		fov, aspect, nearplane, farplane = 60, 1.0, 0.01, 100
 		self.projection_matrix = p.computeProjectionMatrixFOV(
 			fov, aspect, nearplane, farplane)
-		self.endEffector = [0.0,0.0,0.0]
+
 		self._seed()
 	
+	def init_bullet(self, render=False, delta=0.3):
+		# Setting up pybullet
+		p.connect(p.GUI if render else p.DIRECT)
+		p.setAdditionalSearchPath(pybullet_data.getDataPath())  # used by loadURDF
+
+		# Create action map
+		list_actions = [np.array([i, j, k]) for i in [0., -delta, delta] \
+			for j in [0., -delta, delta] for k in [0., -delta, delta]]
+		self.action_map = dict(zip(range(27), list_actions))
+
 	def _seed(self, seed=None):
 		self.np_random, seed = seeding.np_random(seed)
 		return [seed]
@@ -88,86 +65,88 @@ class KukaEnv(gym.Env):
 		start_orientation = p.getQuaternionFromEuler([0, 0, 0])
 		self.botId = p.loadURDF("kuka_iiwa/model.urdf", start_pos, start_orientation)
 
-		# Add table 
+		# Add table
 		# start_pos = [1, 0, 0.001]
 		# start_orientation = p.getQuaternionFromEuler([0, 0, 0])
 		# self.tableId = p.loadURDF("table/table.urdf", start_pos, start_orientation)
 
-		# Add object 
+		# Add object
 		start_pos = [3.0, 0.0, 0.5]
 		start_orientation = p.getQuaternionFromEuler([0, 0, 0])
 		self.teddyId = p.loadURDF("sphere2.urdf", start_pos, start_orientation)
 		# self.teddyId = p.loadURDF("teddy_vhacd.urdf", start_pos, start_orientation)
 
-	def _step(self, action):
-		displacement = self.action_map[action]
-		self.endEffector = [sum(x) for x in zip(self.get_current_endEffector(), displacement)]
-		# self.endEffector = [sum(x) for x in zip(self.endEffector, displacement)]
-		self._assign_throttle(self.endEffector)
-		p.stepSimulation(); self.get_camera()
-		self._observation = self._compute_observation()
-		reward = self._compute_reward()
-		done = self._compute_done()
-		self._envStepCounter += 1
-		return self._observation, reward, done, {}
+		self._update_state_quantities()
 
-	def _reset(self):
-		self.vt = np.zeros(self.numJoints)
-		self._envStepCounter = 0
-
-		p.resetSimulation()
-		self._init_simulation()
-		
-		self._observation = self._compute_observation()
-		return self._observation
-
-	def _assign_throttle(self, endEffector):
-		# Action is the change in angular velocity of each joint
-		print(endEffector)
-		jointPoses = p.calculateInverseKinematics(self.botId,6,endEffector)
-		for i in range(self.numJoints):
-			p.setJointMotorControl2(bodyIndex=self.botId,
-				jointIndex=i,
-				controlMode=p.POSITION_CONTROL,
-				targetPosition=jointPoses[i],
-				targetVelocity=0,
-				force=500,
-				positionGain=0.03,
-				velocityGain=1)
-			
-	def get_current_endEffector(self):
-		com_p, com_o, _, _, _, _ = p.getLinkState(self.botId, 6, computeForwardKinematics=True)
-		rot_matrix = p.getMatrixFromQuaternion(com_o)
-		rot_matrix = np.array(rot_matrix).reshape(3, 3)
-		# Initial vectors
-		init_camera_vector = (0, 0, 1) # z-axis
-		# Rotated vectors
-		camera_vector = rot_matrix.dot(init_camera_vector)
-		return com_p+0.1*camera_vector
-
-	def get_camera(self):
-		# Center of mass position and orientation (of link-7)
+	def _update_state_quantities(self):
 		com_p, com_o, _, _, _, _ = p.getLinkState(
 			self.botId, 6, computeForwardKinematics=True)
+
+		# Update end effector position
+		self.end_effector_pos = com_p
+
+		# Update rotation matrix of end effector's frame
+		# from beginning of episode to now.
 		rot_matrix = p.getMatrixFromQuaternion(com_o)
 		rot_matrix = np.array(rot_matrix).reshape(3, 3)
+		self.rot_matrix = rot_matrix
+
+		# Update current camera image.
+		self.curr_camera_img = self._get_curr_camera_img()
+
+	def _get_curr_camera_img(self):
 		# Initial vectors
 		init_camera_vector = (0, 0, 1) # z-axis
 		init_up_vector = (0, 1, 0) # y-axis
 		# Rotated vectors
-		camera_vector = rot_matrix.dot(init_camera_vector)
-		up_vector = rot_matrix.dot(init_up_vector)
+		camera_vector = self.rot_matrix.dot(init_camera_vector)
+		up_vector = self.rot_matrix.dot(init_up_vector)
 		view_matrix = p.computeViewMatrix(
-			com_p, com_p + 0.1 * camera_vector, up_vector)
+			self.end_effector_pos, self.end_effector_pos + 0.1 * camera_vector,
+			up_vector)
 		img = p.getCameraImage(
 			CAMERA_IMG_SCALE, CAMERA_IMG_SCALE, view_matrix, self.projection_matrix)
 		return img
 
+	def _step_simulation(self):
+		"""Step simulation in pybullet and update state quantities"""
+		p.stepSimulation() # step simulation in pybullet
+		self._update_state_quantities() # update state quantities
+
+	def _step(self, action):
+		displacement = self.action_map[action]
+		ee_target_pos = self.end_effector_pos + displacement
+		self._assign_throttle(ee_target_pos)
+		self._step_simulation()
+		self._gt_bbox = self._compute_observation()
+		reward = self._compute_reward()
+		done = self._compute_done()
+		self._envStepCounter += 1
+		return self._gt_bbox, reward, done, {}
+
+	def _reset(self):
+		self._envStepCounter = 0
+
+		p.resetSimulation()
+		self._init_simulation()
+
+		self._gt_bbox = self._compute_observation()
+		return self._gt_bbox
+
+	def _assign_throttle(self, ee_target_pos):
+		# Calculate joint positions using inverse kinematics
+		joint_pos = p.calculateInverseKinematics(self.botId, 6, ee_target_pos)
+		p.setJointMotorControlArray(bodyIndex=self.botId,
+			jointIndices=range(self.numJoints),
+			controlMode=p.POSITION_CONTROL,
+			targetPositions=joint_pos,
+			forces=[500] * self.numJoints,
+			positionGains=[0.03] * self.numJoints,
+			velocityGains=[1] * self.numJoints)
+
 	def _compute_observation(self):
-		# get Camera image as per current link state and reshape to
-		# (CAMERA_IMG_SCALE ,CAMERA_IMG_SCALE, 3)
-		curr_img = self.get_camera()
-		seg = (curr_img[4] == self.teddyId)
+		# Reshape curr_camera_img to (CAMERA_IMG_SCALE ,CAMERA_IMG_SCALE, 3)
+		seg = (self.curr_camera_img[4] == self.teddyId)
 		x_indices = np.where(np.max(seg, axis=0))[0]
 		y_indices = np.where(np.max(seg, axis=1))[0]
 		# If object occurs in the current image
@@ -180,16 +159,16 @@ class KukaEnv(gym.Env):
 		 	x_min, x_max, y_min, y_max = 0., 0., 0., 0.
 		return [x_min, y_min, x_max, y_max]
 
-	def _compute_reward(self):
-		# Get the similarity between the current image is the target image 
-		bbox = self._compute_observation()
-		reward = (bbox[2]-bbox[0])*(bbox[3]-bbox[1])
-		# print("Reward:{}".format(reward))
-		return reward*10.0 if reward>0.0 else -1
+	def _compute_reward(self, print_reward=False):
+		# Get the similarity between the current image is the target image
+		bbox = self._gt_bbox
+		reward = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
+		if print_reward: print("reward: {}".format(reward))
+		return reward
 
 	def _compute_done(self):
 		# return 1 if the intersection is above a particular threshold
-		return self._envStepCounter >= 200 
+		return self._envStepCounter >= 200
 
 	def _render(self, mode='human', close=False):
 		pass

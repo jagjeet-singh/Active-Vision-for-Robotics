@@ -52,11 +52,12 @@ def main():
     args = parse_args()
     # create the environment
     env = gym.make("kuka-v0") # <-- this we need to create
+    env.init_bullet(render=True)
 
     # create the learning agent
     # model = deepq.models.mlp([16, 16])
     ob_dim = env.observation_space.shape[0]
-    ac_dim = env.action_space.shape[0]
+    ac_dim = env.action_space.n
 
    # Parse noise_type
     action_noise = None
