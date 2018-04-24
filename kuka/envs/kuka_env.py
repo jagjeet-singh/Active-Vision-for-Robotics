@@ -41,7 +41,8 @@ class KukaEnv(gym.Env):
 	
 	def init_bullet(self, render=False, delta=0.3):
 		# Setting up pybullet
-		p.connect(p.GUI if render else p.DIRECT)
+		self.render = render
+		p.connect(p.GUI if self.render else p.DIRECT)
 		p.setAdditionalSearchPath(pybullet_data.getDataPath())  # used by loadURDF
 
 		# Create action map
@@ -123,7 +124,7 @@ class KukaEnv(gym.Env):
 		self._assign_throttle(ee_target_pos)
 		self._step_simulation()
 		self._gt_bbox = self._compute_observation()
-		reward = self._compute_reward()
+		reward = self._compute_reward(print_reward=self.render)
 		done = self._compute_done()
 		self._envStepCounter += 1
 		return self._gt_bbox, reward, done, {}
