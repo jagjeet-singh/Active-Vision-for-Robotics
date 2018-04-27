@@ -4,6 +4,7 @@ import gym
 import kuka
 
 from baselines import deepq
+import tensorboard_logger as tbl
 
 def main():
   parser = argparse.ArgumentParser(description='DQN for Active Vision')
@@ -27,6 +28,10 @@ def main():
   env = gym.make("kuka-v0")
   env.init_bullet(render=args.render, delta=1.0)
 
+  # Configure tensorboard logger
+  tb_dir = os.path.join(exp_dir, 'tb')
+  tbl.configure(tb_dir)
+
   num_episode = 0
   def callback(lcl, _glb):
     nonlocal num_episode
@@ -34,6 +39,11 @@ def main():
     curr_episode = len(lcl['episode_rewards'])
     if curr_episode > num_episode:
       num_episode = curr_episode
+      if num_episode > 1:
+        prev_100_rewards = lcl['episode_rewards'][-101:-1]
+        tbl.log_value('ep_reward', prev_100_rewards[-1], num_episode)
+        tbl.log_value('mean_reward',
+          sum(prev_100_rewards)/len(prev_100_rewards), num_episode)
       if num_episode % args.checkpoint_freq == 0:
         ckpt_file = os.path.join(models_dir, 'ckpt_{}.pkl'.format(num_episode))
         print('Saving model for episode {} to {} ...'.format(
@@ -55,8 +65,9 @@ def main():
     print_freq=1,
     callback=callback
   )
-  print("Saving model to kuka_model.pkl")
-  act.save("kuka_model.pkl")
+  final_model_dir = os.path.join(exp_dir, "kuka_model.pkl")
+  print("Saving model to {}".format(final_model_dir))
+  act.save(final_model_dir)
 
 
 if __name__ == '__main__':

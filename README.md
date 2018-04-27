@@ -3,6 +3,7 @@ Requirements -
 1. pybullet (pip install pybullet)
 2. gym (pip install gym)
 3. baselines (https://github.com/openai/baselines)
+4. tensorboard_logger (https://github.com/TeamHG-Memex/tensorboard_logger)
 
 To install gym environment -
 cd active-vision
