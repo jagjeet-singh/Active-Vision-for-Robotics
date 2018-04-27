@@ -17,6 +17,7 @@ def main():
     help='save model after every this many episodes')
   args = parser.parse_args()
 
+  print('This run is based upon #commit {}'.format(args.commit))
   if args.exp_name is not None:
     exp_dir = os.path.join('exp/deepq', args.exp_name)
     if not os.path.exists(exp_dir): os.makedirs(exp_dir)
