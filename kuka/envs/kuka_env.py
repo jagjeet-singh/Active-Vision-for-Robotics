@@ -119,8 +119,9 @@ class KukaEnv(gym.Env):
 		self._update_state_quantities() # update state quantities
 
 	def _step(self, action):
-		displacement = self.action_map[action]
-		ee_target_pos = self.end_effector_pos + displacement
+		ee_frame_disp = self.action_map[action]
+		world_frame_disp = self.rot_matrix.dot(ee_frame_disp)
+		ee_target_pos = self.end_effector_pos + world_frame_disp
 		self._assign_throttle(ee_target_pos)
 		self._step_simulation()
 		self._gt_bbox = self._compute_observation()

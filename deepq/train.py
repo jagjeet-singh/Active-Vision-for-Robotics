@@ -11,7 +11,7 @@ def main():
   parser.add_argument('--commit', type=str, help='commit SHA of this run')
   parser.add_argument('--exp-name', type=str, default=None,
     help='name of experiment. data will be saved to folder of same name')
-  parser.add_argument('--render', type=bool, default=False,
+  parser.add_argument('--render', type=bool, nargs='?', const=True,
     help='whether to render GUI or not')
   parser.add_argument('--max-episodes', type=int, help='maximum episodes')
   parser.add_argument('--checkpoint-freq', type=int, default=None,
