@@ -18,6 +18,7 @@ from logger import Logger
 import shutil
 import os
 import kuka
+import time
 
 use_cuda = torch.cuda.is_available()
 FloatTensor = torch.cuda.FloatTensor if use_cuda else torch.FloatTensor
@@ -55,6 +56,7 @@ def generate_episode(env, model, render=False, sample=True):
     actions = np.zeros((0))
     rewards = np.zeros((0))
     state = env.reset()
+    start_time = time.time()
     # state = Variable(torch.from_numpy(env.reset()).type(torch.FloatTensor)).view(-1,nS)
     while not done:
         if render:
@@ -62,15 +64,22 @@ def generate_episode(env, model, render=False, sample=True):
         state = np.reshape(state, (1,nS))
         action_softmax = model(Variable(torch.from_numpy(state).type(FloatTensor)))
         if sample:
-	        action = np.random.choice(nA, 1, p=action_softmax.data.numpy().reshape(nA,))[0]
+            if use_cuda:
+                action = np.random.choice(nA, 1, p=action_softmax.data.cpu().numpy().reshape(nA,))[0]
+            else:
+                action = np.random.choice(nA, 1, p=action_softmax.data.numpy().reshape(nA,))[0]
         else:
-        	action = np.argmax(action_softmax.data.numpy())
+            if use_cuda:
+                action = np.argmax(action_softmax.data.cpu().numpy())
+            else:
+                action = np.argmax(action_softmax.data.numpy())
         next_state, reward, done, _ = env.step(action)
         states = np.append(states, state, axis=0)
         # action = torch.eye(nA)[action].view(1,nA)            
         actions = np.append(actions, action)
         rewards = np.append(rewards,reward)
         state = np.copy(next_state)
+    print("Episode completed in {} seconds".format(time.time()-start_time))
     return states, actions, rewards
 
 def save_checkpoint(state, is_best, env):
@@ -163,28 +172,30 @@ def main(args):
 	nA = env.action_space.n
 	# Declare the model
 	model = Reinforce(nS, nA)
+	if use_cuda:
+		model.cuda()
 	# criterion = nn.CrossEntropyLoss()
 	optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-	logger = Logger('hw3_logs', name=args.env+'_'+args.tb_logdir)
+	logger = Logger('tb_logs', name=args.env+'_'+args.tb_logdir)
 
 	if args.resume:
 		start_episode, best_reward = load_checkpoint(args.resume, model, optimizer)
 	else:
 		start_episode = args.start_episode
 		best_reward = -np.inf
-	
+	is_best = 0
 	# Start with policy model 
 	for i in range(start_episode, args.end_episode):
-		is_best = 0
+		
 		# Generate the episode
 		states, actions, rewards = generate_episode(env, model, render=False)
-		print(actions.shape[0])
+		# print(actions.shape[0])
 		states = Variable(torch.from_numpy(states).type(FloatTensor), requires_grad=False).view(-1,nS)
 		actions = Variable(torch.from_numpy(actions).type(LongTensor), requires_grad=False).view(-1,1)
 		episode_length = states.shape[0]
 
 		# Array to store returns from each time step
-		G = torch.zeros(episode_length,1)
+		G = torch.zeros(episode_length,1).type(FloatTensor)
 
 		# First calculating return and loss for the last step of episode
 		G[episode_length-1] = rewards[episode_length-1]/100.0
@@ -221,13 +232,15 @@ def main(args):
 		# 	if mean > best_reward:
 		# 		is_best = 1
 
-		# 	# Save checkpoint
-		# 	save_checkpoint({
-		# 		'epoch': i + 1,
-		# 		'state_dict': model.state_dict(),
-		# 		'best_reward': best_reward,
-		# 		'optimizer' : optimizer.state_dict(),
-		# 	}, is_best, args.env)
+		# Save checkpoint
+		if np.sum(rewards) > best_reward:
+			save_checkpoint({
+				'epoch': i + 1,
+				'state_dict': model.state_dict(),
+				'best_reward': best_reward,
+				'optimizer' : optimizer.state_dict(),
+			}, is_best, args.env)
+			best_reward = np.sum(rewards)
 
 		# 	# Plot on tensorboard
 		# 	logger.scalar_summary(tag='Test/Mean Reward', value=mean, step=i)

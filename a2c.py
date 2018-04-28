@@ -117,9 +117,16 @@ def generate_episode(env, model, render=False, sample=True):
         state = np.reshape(state, (1,nS))
         action_softmax = model(Variable(torch.from_numpy(state).type(FloatTensor)))
         if sample:
-	        action = np.random.choice(nA, 1, p=action_softmax.data.numpy().reshape(nA,))[0]
+            if use_cuda:
+                action = np.random.choice(nA, 1, p=action_softmax.data.cpu().numpy().reshape(nA,))[0]
+            else:
+                action = np.random.choice(nA, 1, p=action_softmax.data.numpy().reshape(nA,))[0]
         else:
-        	action = np.argmax(action_softmax.data.numpy())
+            if use_cuda:
+                action = np.argmax(action_softmax.data.cpu().numpy())
+            else:
+                action = np.argmax(action_softmax.data.numpy())
+
         next_state, reward, done, _ = env.step(action)
         print("Action:{}, Reward:{}".format(action, reward))
         # print("Step:{}, state{}, action:{}, next state:{}, reward:{}".format(step, state, action, next_state, reward))
@@ -313,6 +320,9 @@ def main(args):
     nA = env.action_space.n
     actor_model = Actor(nS, nA)
     critic_model = Critic(nS, nA)
+    if use_cuda:
+        actor_model.cuda()
+        critic_model.cuda()
 
     if args.as_baseline:
         optimizer = torch.optim.RMSprop(list(actor_model.parameters()) + list(critic_model.parameters()), args.actor_lr)
