@@ -125,7 +125,7 @@ class KukaEnv(gym.Env):
 		self._assign_throttle(ee_target_pos)
 		self._step_simulation()
 		self._gt_bbox = self._compute_observation()
-		reward = self._compute_reward(print_reward=self.render)
+		reward = self._compute_reward()
 		done = self._compute_done()
 		self._envStepCounter += 1
 		return self._gt_bbox, reward, done, {}
@@ -165,11 +165,11 @@ class KukaEnv(gym.Env):
 		 	x_min, x_max, y_min, y_max = 0., 0., 0., 0.
 		return [x_min, y_min, x_max, y_max]
 
-	def _compute_reward(self, print_reward=True):
+	def _compute_reward(self):
 		# Get the similarity between the current image is the target image
 		bbox = self._gt_bbox
 		reward = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
-		if print_reward: print("reward: {}".format(reward))
+		# if print_reward: print("reward: {}".format(reward))
 		return reward
 
 	def _compute_done(self):
