@@ -123,9 +123,13 @@ class KukaEnv(gym.Env):
 		self._update_state_quantities() # update state quantities
 
 	def _step(self, action):
-		ee_frame_disp = self.action_map[action]
-		world_frame_disp = self.rot_matrix.dot(ee_frame_disp)
-		ee_target_pos = self.end_effector_pos + world_frame_disp
+		area_bbox = self._compute_reward() # just to find area of visible box
+		if area_bbox < 0.02:
+			ee_target_pos = self._exploration_subroutine()
+		else:
+			ee_frame_disp = self.action_map[action]
+			world_frame_disp = self.rot_matrix.dot(ee_frame_disp)
+			ee_target_pos = self.end_effector_pos + world_frame_disp
 		self._assign_throttle(ee_target_pos)
 		self._step_simulation()
 		self._gt_bbox = self._compute_observation()
@@ -133,6 +137,16 @@ class KukaEnv(gym.Env):
 		done = self._compute_done()
 		self._envStepCounter += 1
 		return self._gt_bbox, reward, done, {}
+	
+	def _exploration_subroutine(self):
+		pos_x, pos_y, _ = self.end_effector_pos
+		theta = -np.pi / 4
+		rot = np.array([[np.cos(theta), -np.sin(theta)],
+										[np.sin(theta), np.cos(theta)]])
+		new_pos = rot.dot([pos_x, pos_y])
+		new_pos /= np.linalg.norm(new_pos)
+		new_pos *= 2.0
+		return (new_pos[0], new_pos[1], 0.5)
 
 	def _reset(self):
 		self._envStepCounter = 0
@@ -150,8 +164,9 @@ class KukaEnv(gym.Env):
 			jointIndices=range(self.numJoints),
 			controlMode=p.POSITION_CONTROL,
 			targetPositions=joint_pos,
-			forces=[500] * self.numJoints,
-			positionGains=[0.03] * self.numJoints,
+			forces=[300] * self.numJoints,
+			positionGains=[0.15] * self.numJoints,
+			targetVelocities=[0.0]* self.numJoints,
 			velocityGains=[1] * self.numJoints)
 
 	def _compute_observation(self):
