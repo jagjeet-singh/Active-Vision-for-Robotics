@@ -14,6 +14,8 @@ def main():
   parser.add_argument('--render', type=bool, nargs='?', const=True,
     help='whether to render GUI or not')
   parser.add_argument('--max-episodes', type=int, help='maximum episodes')
+  parser.add_argument('--epoch', type=int, default=None,
+    help='training epoch of model to load. default will load kuka_model.pkl')
   args = parser.parse_args()
 
   print('This run is based upon #commit {}'.format(args.commit))
@@ -23,7 +25,12 @@ def main():
   env = gym.make("kuka-v0")
   env.init_bullet(render=args.render, delta=1.0)
 
-  act = deepq.load(os.path.join(exp_dir, 'kuka_model.pkl'))
+  if args.epoch is None:
+    load_path = os.path.join(exp_dir, 'kuka_model.pkl')
+  else:
+    load_path = os.path.join(models_dir, 'ckpt_{}.pkl'.format(args.epoch))
+    print(load_path)
+  act = deepq.load(load_path)
   for _ in range(args.max_episodes):
     obs, done = env.reset(), False
     while not done:
