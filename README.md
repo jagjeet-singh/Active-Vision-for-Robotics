@@ -10,3 +10,4 @@ Requirements -
 To install gym environment -
 cd active-vision
 pip install -e .
+
