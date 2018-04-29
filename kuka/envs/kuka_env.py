@@ -76,7 +76,11 @@ class KukaEnv(gym.Env):
 		# self.tableId = p.loadURDF("table/table.urdf", start_pos, start_orientation)
 
 		# Add object
-		start_pos = [3.0, 0.0, 0.5]
+		# Randomly place object at a radius from bot
+		radius = 3.0
+		theta = np.random.uniform(0, 2 * np.pi)
+		r_vec = [radius * np.cos(theta), radius * np.sin(theta)]
+		start_pos = [start_pos[0] + r_vec[0], start_pos[1] + r_vec[1], 0.5]
 		start_orientation = p.getQuaternionFromEuler([0, 0, 0])
 		self.teddyId = p.loadURDF("sphere2.urdf", start_pos, start_orientation)
 		# self.teddyId = p.loadURDF("teddy_vhacd.urdf", start_pos, start_orientation)
