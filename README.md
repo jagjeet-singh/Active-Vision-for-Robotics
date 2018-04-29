@@ -7,7 +7,7 @@ Requirements -
 5. PyTorch
 6. TensorFlow
 
-To install gym environment -
-cd active-vision
-pip install -e .
+To install gym environment -  
+cd active-vision  
+pip install -e .  
 
