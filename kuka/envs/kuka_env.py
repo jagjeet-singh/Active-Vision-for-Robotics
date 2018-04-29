@@ -126,11 +126,12 @@ class KukaEnv(gym.Env):
 		area_bbox = self._compute_reward() # just to find area of visible box
 		if area_bbox < 0.02:
 			ee_target_pos = self._exploration_subroutine()
+			self._assign_throttle(ee_target_pos, 0.15)
 		else:
 			ee_frame_disp = self.action_map[action]
 			world_frame_disp = self.rot_matrix.dot(ee_frame_disp)
 			ee_target_pos = self.end_effector_pos + world_frame_disp
-		self._assign_throttle(ee_target_pos)
+			self._assign_throttle(ee_target_pos, 0.03)
 		self._step_simulation()
 		self._gt_bbox = self._compute_observation()
 		reward = self._compute_reward()
@@ -157,7 +158,7 @@ class KukaEnv(gym.Env):
 		self._gt_bbox = self._compute_observation()
 		return self._gt_bbox
 
-	def _assign_throttle(self, ee_target_pos):
+	def _assign_throttle(self, ee_target_pos, position_gain):
 		# Calculate joint positions using inverse kinematics
 		joint_pos = p.calculateInverseKinematics(self.botId, 6, ee_target_pos)
 		p.setJointMotorControlArray(bodyIndex=self.botId,
@@ -165,7 +166,7 @@ class KukaEnv(gym.Env):
 			controlMode=p.POSITION_CONTROL,
 			targetPositions=joint_pos,
 			forces=[300] * self.numJoints,
-			positionGains=[0.15] * self.numJoints,
+			positionGains=[position_gain] * self.numJoints,
 			targetVelocities=[0.0]* self.numJoints,
 			velocityGains=[1] * self.numJoints)
 
