@@ -1,4 +1,5 @@
 import os
+import sys
 import math
 import numpy as np
 import gym
@@ -7,8 +8,15 @@ from gym.utils import seeding
 import pybullet as p
 import pybullet_data
 from PIL import Image
+import pdb
+from one_shot.eval.eval_av import get_mask
+from one_shot.models import *
+import torch
+from PIL import Image
 
-CAMERA_IMG_SCALE = 1000
+CAMERA_IMG_SCALE = 256
+
+use_cuda = torch.cuda.is_available()
 
 class KukaEnv(gym.Env):
 	metadata = {
@@ -36,10 +44,10 @@ class KukaEnv(gym.Env):
 		fov, aspect, nearplane, farplane = 60, 1.0, 0.01, 100
 		self.projection_matrix = p.computeProjectionMatrixFOV(
 			fov, aspect, nearplane, farplane)
-
+		# Defining segmentation network
 		self._seed()
 	
-	def init_bullet(self, render=False, delta=0.3):
+	def init_bullet(self, render=False, delta=0.3, model='alexnet', target_image_path = 'active-vision-storage/av_data/targets/1.png'):
 		# Setting up pybullet
 		self.render = render
 		p.connect(p.GUI if self.render else p.DIRECT)
@@ -53,6 +61,21 @@ class KukaEnv(gym.Env):
 				action[i] = j
 				list_actions.append(action)
 		self.action_map = dict(zip(range(6), list_actions))
+
+		# Initializing segmentation network
+		if model=='alexnet':
+			self.net = FCN8s_alex(num_classes=2, pretrained=False)
+			self.snapshot_path = 'active-vision-storage/ckpt/alexnet/epoch_7_loss_750.40502_acc_0.99551_acc-cls_0.98263_mean-iu_0.96637_fwavacc_0.99118_lr_0.0000100000.pth'
+		elif model=='vgg':
+			self.net = FCN8s(num_classes=2, pretrained=False)
+			self.snapshot_path = 'active-vision-storage/ckpt/av_fcn8s/epoch_24_loss_416.99406_acc_0.99835_acc-cls_0.99487_mean-iu_0.98788_fwavacc_0.99672_lr_0.0000100000.pth'
+		if use_cuda:
+			self.net.cuda()
+			self.net.load_state_dict(torch.load(self.snapshot_path))
+		else:
+			self.net.load_state_dict(torch.load(self.snapshot_path,map_location=lambda storage, loc: storage))
+		self.target_image = Image.open(target_image_path).convert('RGB')
+		print("## Environment initialized ##")
 
 	def _seed(self, seed=None):
 		self.np_random, seed = seeding.np_random(seed)
@@ -110,8 +133,11 @@ class KukaEnv(gym.Env):
 		# Rotated vectors
 		camera_vector = self.rot_matrix.dot(init_camera_vector)
 		up_vector = self.rot_matrix.dot(init_up_vector)
+		# view_matrix = p.computeViewMatrix(
+		# 	self.end_effector_pos, self.end_effector_pos + 0.1 * camera_vector,
+		# 	up_vector)
 		view_matrix = p.computeViewMatrix(
-			self.end_effector_pos, self.end_effector_pos + 0.1 * camera_vector,
+			self.end_effector_pos+0.005 * camera_vector, self.end_effector_pos + 0.1 * camera_vector,
 			up_vector)
 		img = p.getCameraImage(
 			CAMERA_IMG_SCALE, CAMERA_IMG_SCALE, view_matrix, self.projection_matrix)
@@ -172,7 +198,11 @@ class KukaEnv(gym.Env):
 
 	def _compute_observation(self):
 		# Reshape curr_camera_img to (CAMERA_IMG_SCALE ,CAMERA_IMG_SCALE, 3)
-		seg = (self.curr_camera_img[4] == self.teddyId)
+		# Using masks predicted by segmentation
+		img = self.curr_camera_img[2][:,:,:-1].astype(np.uint8)
+		seg = get_mask(img, self.target_image, self.net)
+		
+		# seg = (self.curr_camera_img[4] == self.teddyId)
 		x_indices = np.where(np.max(seg, axis=0))[0]
 		y_indices = np.where(np.max(seg, axis=1))[0]
 		# If object occurs in the current image
