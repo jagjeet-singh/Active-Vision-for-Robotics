@@ -49,7 +49,8 @@ class KukaEnv(gym.Env):
 	
 	def init_bullet(self, render=False, delta=0.3, model='alexnet', target_image_path = 'active-vision-storage/av_data/targets/1.png'):
 		# Setting up pybullet
-		p.connect(p.GUI if render else p.DIRECT)
+		self.render = render
+		p.connect(p.GUI if self.render else p.DIRECT)
 		p.setAdditionalSearchPath(pybullet_data.getDataPath())  # used by loadURDF
 
 		# Create action map
@@ -98,7 +99,11 @@ class KukaEnv(gym.Env):
 		# self.tableId = p.loadURDF("table/table.urdf", start_pos, start_orientation)
 
 		# Add object
-		start_pos = [3.0, 0.0, 0.5]
+		# Randomly place object at a radius from bot
+		radius = 3.0
+		theta = np.random.uniform(0, 2 * np.pi)
+		r_vec = [radius * np.cos(theta), radius * np.sin(theta)]
+		start_pos = [start_pos[0] + r_vec[0], start_pos[1] + r_vec[1], 0.5]
 		start_orientation = p.getQuaternionFromEuler([0, 0, 0])
 		self.teddyId = p.loadURDF("sphere2.urdf", start_pos, start_orientation)
 		# self.teddyId = p.loadURDF("teddy_vhacd.urdf", start_pos, start_orientation)
@@ -144,15 +149,31 @@ class KukaEnv(gym.Env):
 		self._update_state_quantities() # update state quantities
 
 	def _step(self, action):
-		displacement = self.action_map[action]
-		ee_target_pos = self.end_effector_pos + displacement
-		self._assign_throttle(ee_target_pos)
+		area_bbox = self._compute_reward() # just to find area of visible box
+		if area_bbox < 0.02:
+			ee_target_pos = self._exploration_subroutine()
+			self._assign_throttle(ee_target_pos, 0.15)
+		else:
+			ee_frame_disp = self.action_map[action]
+			world_frame_disp = self.rot_matrix.dot(ee_frame_disp)
+			ee_target_pos = self.end_effector_pos + world_frame_disp
+			self._assign_throttle(ee_target_pos, 0.03)
 		self._step_simulation()
 		self._gt_bbox = self._compute_observation()
 		reward = self._compute_reward()
 		done = self._compute_done()
 		self._envStepCounter += 1
 		return self._gt_bbox, reward, done, {}
+	
+	def _exploration_subroutine(self):
+		pos_x, pos_y, _ = self.end_effector_pos
+		theta = -np.pi / 4
+		rot = np.array([[np.cos(theta), -np.sin(theta)],
+										[np.sin(theta), np.cos(theta)]])
+		new_pos = rot.dot([pos_x, pos_y])
+		new_pos /= np.linalg.norm(new_pos)
+		new_pos *= 2.0
+		return (new_pos[0], new_pos[1], 0.5)
 
 	def _reset(self):
 		self._envStepCounter = 0
@@ -163,15 +184,16 @@ class KukaEnv(gym.Env):
 		self._gt_bbox = self._compute_observation()
 		return self._gt_bbox
 
-	def _assign_throttle(self, ee_target_pos):
+	def _assign_throttle(self, ee_target_pos, position_gain):
 		# Calculate joint positions using inverse kinematics
 		joint_pos = p.calculateInverseKinematics(self.botId, 6, ee_target_pos)
 		p.setJointMotorControlArray(bodyIndex=self.botId,
 			jointIndices=range(self.numJoints),
 			controlMode=p.POSITION_CONTROL,
 			targetPositions=joint_pos,
-			forces=[500] * self.numJoints,
-			positionGains=[0.03] * self.numJoints,
+			forces=[300] * self.numJoints,
+			positionGains=[position_gain] * self.numJoints,
+			targetVelocities=[0.0]* self.numJoints,
 			velocityGains=[1] * self.numJoints)
 
 	def _compute_observation(self):
@@ -193,11 +215,11 @@ class KukaEnv(gym.Env):
 		 	x_min, x_max, y_min, y_max = 0., 0., 0., 0.
 		return [x_min, y_min, x_max, y_max]
 
-	def _compute_reward(self, print_reward=True):
+	def _compute_reward(self):
 		# Get the similarity between the current image is the target image
 		bbox = self._gt_bbox
 		reward = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
-		if print_reward: print("reward: {}".format(reward))
+		# if print_reward: print("reward: {}".format(reward))
 		return reward
 
 	def _compute_done(self):
