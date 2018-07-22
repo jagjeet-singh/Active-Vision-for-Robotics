@@ -15,7 +15,7 @@ Sample Results:
 
 Robot learns to explore the environment to find the target object and then stay focused on it.
 
-
+![random](results/random.gif)
 
 Once the target object is in sight, robot is robust to perturbations
 
