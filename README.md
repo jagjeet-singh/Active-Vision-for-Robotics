@@ -15,5 +15,5 @@ Sample Results:
 
 Robot learning to localize the object at random initial locations
 
-[!RandomLocation](results/random_location.gif)
+![RandomLocation](results/random_location.gif)
 
