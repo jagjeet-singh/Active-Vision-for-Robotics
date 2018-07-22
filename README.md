@@ -13,7 +13,10 @@ pip install -e .
 
 Sample Results:
 
-Robot learning to localize the object at random initial locations
+Robot learns to explore the environment to find the target object and then stay focused on it.
 
 ![RandomLocation](results/random_location.gif)
 
+Once the target object is in sight, robot is robust to perturbations
+
+![robust](results/robust.gif)
