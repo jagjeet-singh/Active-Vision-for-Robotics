@@ -11,3 +11,9 @@ To install gym environment -
 cd active-vision  
 pip install -e .  
 
+Sample Results:
+
+Robot learning to localize the object at random initial locations
+
+[!RandomLocation][results/random_location.gif]
+
